@@ -15,6 +15,8 @@
 #define BUFFER 100
 
 uint16_t SQL = 1000;
+uint16_t CWSPEED = 5;
+uint16_t CWTONE = 600;
 
 uint16_t MUL = 1000;
 uint16_t MMUL = 100;

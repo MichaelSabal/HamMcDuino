@@ -19,7 +19,7 @@
  * 
  */
 
-#include "Arduino.h"
+#include <Arduino.h>
 #include "heltec.h"
 #include <WiFi.h>
 
@@ -121,12 +121,11 @@ void loop() {
 } // loop()
 
 void process_http(WiFiClient http_cxn) {
-  char request[65536] = "";
-  int charptr = 0;
+  String request = "";
   char c = http_cxn.read();
   bool started = false;
   long waiting = millis();
-  request[charptr] = 0;
+ 
   while (c > 0) {
     if (c < 255) { 
       Serial.print(c);
@@ -139,29 +138,32 @@ void process_http(WiFiClient http_cxn) {
       }
     }
     if (c==13 || c==10) {
-      String rr = String(request);
+      String rr = request;
       rr.toUpperCase();
       if (rr.substring(0,3)=="GET") {
         break;
       }
     } else if (c < 255) {
-      request[charptr++] = c;
+      request += c;
     }
-    request[charptr] = 0;
     c = http_cxn.read();
   }
-  Serial.println("Request: "+String(request));
+  Serial.println("Request: "+request);
 
-  String pagename = "";
-  char *query;
-  bool queryStart = false;
-  for (int i=4;i<charptr;i++) {
-    if (request[i]==' ') break;
-    if (request[i]=='?') queryStart = true;
-    if (!queryStart) pagename = pagename + request[i];
-    else *query++ = request[i];
+  String pagename = request;
+  String query = "";
+  pagename = pagename.substring(4);
+  int cpos = pagename.indexOf(' ');
+  if (cpos > 0) {
+    pagename = pagename.substring(0,cpos);
   }
-  *query = 0;
+  cpos = pagename.indexOf('?');
+  if (cpos > 0) {
+    query = pagename;
+    query = query.substring(cpos+1);
+    pagename = pagename.substring(0,cpos);
+  }
+
   Serial.println("Updated request: "+pagename);
   int response_page = 0;
   if (pagename=="/mcw") response_page = 1;
@@ -185,7 +187,7 @@ void process_http(WiFiClient http_cxn) {
 } // process_http()
 
 String http_page_0() {
-  String html = "<!DOCTYPE HTML><HTML><HEAD><TITLE>RACES HamMcDuino</TITLE><STYLE>body { font-size: 2.0em; }</STYLE></HEAD><BODY>";
+  String html = "<!DOCTYPE HTML><HTML><HEAD><TITLE>RACES HamMcDuino</TITLE><STYLE>body { font-size: 2.0em; }</STYLE><META charset=\"UTF-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /></HEAD><BODY>";
   html += "Welcome to the RACES HamMcDuino system.<BR />";
   html += "<B>Current status:</B>";
   html += "<UL><LI>Battery: "+(String)check_battery+"V</LI>";
@@ -200,13 +202,16 @@ String http_page_0() {
   return html;
 }
 String http_page_1() {
-  String html = "<!DOCTYPE HTML><HTML><HEAD><TITLE>RACES HamMcDuino [MCW]</TITLE><STYLE>body { font-size: 2.0em; }</STYLE></HEAD><BODY>";
-  html += "<INPUT type=\"text\" size=\"80\" placeholder=\"Type your message here\" id=\"message\" /><BUTTON onClick='window.href=\"/mcwmsg?\"+encodeURIComponent(document.getElementById(\"message\"));'>Send</BUTTON>";
+  String html = "<!DOCTYPE HTML><HTML><HEAD><TITLE>RACES HamMcDuino [MCW]</TITLE><STYLE>body { font-size: 2.0em; }</STYLE><META charset=\"UTF-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /></HEAD><BODY>";
+  html += "<INPUT type=\"text\" style=\"width: 95vw;\" placeholder=\"Type your message here\" id=\"message\" /><BR /><BUTTON onClick='window.location.href=\"/mcwmsg?\"+encodeURIComponent(document.getElementById(\"message\").value);'>Send</BUTTON>";
+  html += "</BODY></HTML>";
   if (mcw_msg==0) return html;
   int qlen = mcw_msg;
   if (mcw_msg==BUFFER-1) qlen = mcw_msg + 1;
   for (int i=qlen-1;i>=0;i--) {
-    html += "<P>"+MCW[i]+"</P>";
+    char tmp[MCW[i].length()+13];
+    sprintf(tmp,"<P>%d: %s</P>",i,MCW[i]);
+    html += String(tmp);
   }
   return html;
 }
@@ -217,42 +222,32 @@ String http_page_3() {
   return "WinLink";
 }
 
-String queue_mcw_msg(char *query) {
-  char *cleanquery;
-  // https://arduino.stackexchange.com/a/18008
-  while (*query) {
-    // Check to see if the current character is a %
-    if (*query == '%') {
-
-        // Grab the next two characters and move leader forwards
-        query++;
-        char high = *query;
-        query++;
-        char low = *query;
-
-        // Convert ASCII 0-9A-F to a value 0-15
-        if (high > 0x39) high -= 7;
-        high &= 0x0f;
-
-        // Same again for the low byte:
-        if (low > 0x39) low -= 7;
-        low &= 0x0f;
-
-        // Combine the two into a single byte and store in follower:
-        *cleanquery = (high << 4) | low;
-    } else if (*query == '+') {
-        *cleanquery = 0x20;
+String queue_mcw_msg(String querystring) {
+  String cleanquery = "";
+  String tmp = "";
+  char tmp0x[5] = "0x00";
+  for (int cptr=0;cptr<querystring.length();cptr++) {
+    char c = querystring.charAt(cptr);
+    if (tmp.length()==2) {
+      tmp0x[0] = '0';
+      tmp0x[1] = 'x';
+      tmp0x[2] = tmp.charAt(1);
+      tmp0x[3] = c;
+      tmp0x[4] = 0;
+      unsigned long cl = strtoul(tmp0x,NULL,16);
+      c = (char)(cl & 0xff);
+      cleanquery += c;
+      tmp = "";
+    } else if (tmp.length()==1) {
+      tmp += c;
+    } else if (c=='%') {
+      tmp += c;
+    } else if (c=='+') {
+      cleanquery += ' ';
     } else {
-        // All other characters copy verbatim
-        *cleanquery = *query;
+      cleanquery += c;
     }
-
-    // Move both pointers to the next character:
-    query++;
-    cleanquery++;
   }
-  // Terminate the new string with a NULL character to trim it off
-  *cleanquery = 0;
   oneLineBuffer = oneLineBuffer + cleanquery;
   if (mcw_msg >= BUFFER - 1) {
     for (int i=0;i<BUFFER - 2; i++) {
@@ -362,7 +357,10 @@ void send_winlink() {
 } // send_winlink()
 
 void send_oneline() {
+  if (oneLineBuffer.length()==0) return;
   switch(svc_mode) {
+    case 0:
+    case 4: break;
     case 1: send_mcw(); break;
     case 2: send_aprs1200(); break;
     case 3: send_aprs9600(); break;
@@ -370,9 +368,75 @@ void send_oneline() {
     case 6: send_mfsk2k(); break;
   }
 } // send_oneline()
-
+void playDot(int dotlen) {
+    digitalWrite(LED,HIGH);
+    ledcAttachPin(TNC_OUT,0);
+    ledcWriteTone(0,CWTONE);
+    delayMicroseconds(1000*dotlen);
+    digitalWrite(LED,LOW);
+    ledcDetachPin(TNC_OUT);
+    ledcWriteTone(0,0);
+    delayMicroseconds(1000*dotlen);
+}
+void playDash(int dotlen) {
+    digitalWrite(LED,HIGH);
+    ledcAttachPin(TNC_OUT,0);
+    ledcWriteTone(0,CWTONE);
+    delayMicroseconds(3000*dotlen);
+    digitalWrite(LED,LOW);
+    ledcDetachPin(TNC_OUT);
+    ledcWriteTone(0,0);
+    delayMicroseconds(1000*dotlen);
+}
 void send_mcw() {
-
+  int dotlen = 1200/CWSPEED; // milliseconds
+  char c = oneLineBuffer.charAt(0);
+  String list;
+  if (c<=32) {
+    delayMicroseconds(3000*dotlen);
+  }
+  // First dot
+  list = "eEaAiIsSuUrRwWhHvVfFlLpPjJ12345.+@?'&_\"$";
+  if (list.indexOf(c)>=0) playDot(dotlen);
+  // First dash
+  list = "tTnNmMdDkKgGoObBxXzZyYqQcC67890=/,!():;-";
+  if (list.indexOf(c)>=0) playDash(dotlen);
+  // Second dot
+  list = "iIsSuUhHvVfF2345nNdDkKbBxXcCyY6=/?()!;-$_";
+  if (list.indexOf(c)>=0) playDot(dotlen);
+  // Second dash
+  list = "aArRwWlLpPjJ+1@mMgGoOzZqQ7890.,'&:\"";
+  if (list.indexOf(c)>=0) playDash(dotlen);
+  // Third dot
+  list = "sShHvV543dDbBxX6=/rRlLgGzZqQ7.,&-\"$";
+  if (list.indexOf(c)>=0) playDot(dotlen);
+  // Third dash
+  list = "uUfF2wWpPjJ1kKcCyYoO890@?'!():;_";
+  if (list.indexOf(c)>=0) playDash(dotlen);
+  // Fourth dot
+  list = "hHfF54@lLpPbBcCzZ678,!&:;-\"";
+  if (list.indexOf(c)>=0) playDot(dotlen);
+  // Fourth dash
+  list = "vVjJ123+xXyYqQ/90.?'()_$";
+  if (list.indexOf(c)>=0) playDash(dotlen);
+  // Fifth dot
+  list = "56789+/.?()&:-_$";
+  if (list.indexOf(c)>=0) playDot(dotlen);
+  // Fifth dash
+  list = "12340@=,'!;\"";
+  if (list.indexOf(c)>=0) playDash(dotlen);
+  // Sixth dot
+  list = "@?':;-\"$";
+  if (list.indexOf(c)>=0) playDot(dotlen);
+  // Sixth dash
+  list = ".,!)_";
+  if (list.indexOf(c)>=0) playDash(dotlen);
+  // Seventh dash
+  list = "$";
+  if (list.indexOf(c)>=0) playDash(dotlen);
+  
+  oneLineBuffer = oneLineBuffer.substring(1);
+  delayMicroseconds(2000*dotlen);
 }
 void send_aprs1200() {
   
