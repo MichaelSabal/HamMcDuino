@@ -35,6 +35,7 @@ char myloc[6]  = "";           // For modes that transmit location data, in Maid
 void setup() {
   oneLineBuffer = "";
 	pinMode(LED,OUTPUT);
+  pinMode(TNC_IN,INPUT);
 	digitalWrite(LED,LOW);
  	Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Enable*/, true /*Serial Enable*/);
   Heltec.display->clear();
@@ -116,6 +117,10 @@ void loop() {
     Heltec.display->drawString(0,26,MODES[svc_mode]);
     Heltec.display->drawString(0,42,((String)myIP[0])+"."+((String)myIP[1])+"."+((String)myIP[2])+"."+((String)myIP[3]));
     Heltec.display->display();  
+  } else if (display_set == 1) {
+    Heltec.display->drawString(0,10,"TNC_IN: ");
+    Heltec.display->drawString(70,10,((String)signal_in));
+    Heltec.display->display();
   }
   time_ctr = millis();
 } // loop()
@@ -347,7 +352,21 @@ void process_smtp(WiFiClient smtp_cxn) {
 } // process_smtp()
 
 void process_radio() {
-
+  int samples[20000];
+  int rec = 0;
+  long start = millis();
+  while (millis() - start < 20) {
+    samples[rec++] = analogRead(TNC_IN);
+  }
+  Serial.println(rec+" samples recorded");
+  int highest = 0;
+  int lowest = 4096;
+  for (int ctr=0;ctr<rec;ctr++) {
+    if (samples[ctr] > highest) highest = samples[ctr];
+    if (samples[ctr] < lowest) lowest = samples[ctr];
+  }
+  Serial.println("Highest: "+highest);
+  Serial.println("Lowest: "+lowest);
 } // process_radio()
 
 void send_winlink() {

@@ -6,7 +6,7 @@
 #define BATTERY_ALT 13
 // #define LED 25 // Defined in Heltec.h
 #define TNC_OUT 26 // This is the only PWM / DAC pin on the Heltec board.
-#define TNC_IN 27  // Pins 12,13,14,25,26,27 are connected to regular ADC.
+#define TNC_IN 34  // Pins 32-39 are connected to regular ADC (ADC1). Note: ADC2 does not work when Wi-Fi is enabled.
 #define PTT 14
 
 #define HTTP_TIMEOUT 30
@@ -53,6 +53,6 @@ unsigned int mcw_msg = 0;
 unsigned int rtty_msg = 0;
 unsigned int nbems_msg = 0;
 unsigned int svc_mode = 0;
-unsigned int display_set = 0;
+unsigned int display_set = 1;
 WiFiServer http(80);
 WiFiServer smtp(25);
